@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pocket Audio HiChord — Interactive Synth</title>
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      overflow-x: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, #0d0f14 0%, #1a1d27 40%, #12141c 100%);
+      color: #e8eaf0;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    /* ===== PAGE LAYOUT ===== */
+    .page {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      gap: 20px;
+    }
+
+    h1 {
+      font-size: clamp(1.1rem, 3vw, 1.5rem);
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #a0a8c0;
+      text-align: center;
+    }
+    h1 span { color: #6ee7b7; }
+
+    /* ===== DEVICE BODY ===== */
+    .device {
+      position: relative;
+      width: min(420px, 96vw);
+      aspect-ratio: 100 / 71;
+      background: linear-gradient(145deg, #2a2e3a 0%, #1c1f28 50%, #16181f 100%);
+      border-radius: 18px;
+      box-shadow:
+        0 25px 50px -12px rgba(0,0,0,0.7),
+        0 0 0 1px rgba(255,255,255,0.06),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        inset 0 -2px 6px rgba(0,0,0,0.4);
+      padding: 14px 16px 18px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      overflow: hidden;
+    }
+    .device::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 30%);
+      pointer-events: none;
+    }
+
+    /* Power LED */
+    .power-led {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+      transition: all 0.3s;
+    }
+    .power-led.on {
+      background: #34d399;
+      box-shadow: 0 0 8px 2px rgba(52,211,153,0.7), inset 0 0 2px rgba(255,255,255,0.4);
+    }
+
+    /* ===== TOP BAR: OLED + CONTROLS ===== */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 2;
+    }
+
+    .oled {
+      flex: 1;
+      height: 42px;
+      background: #0a0c10;
+      border-radius: 6px;
+      border: 1px solid #1e2230;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #6ee7b7;
+      letter-spacing: 0.05em;
+    }
+    .oled .chord-name { font-size: 13px; font-weight: bold; color: #a7f3d0; }
+    .oled .meta { opacity: 0.7; font-size: 10px; }
+
+    .func-btns {
+      display: flex;
+      gap: 6px;
+    }
+    .func-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #1a1a1a;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25);
+      transition: transform 0.08s, box-shadow 0.08s;
+    }
+    .func-btn:active, .func-btn.active {
+      transform: translateY(1px);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .func-btn.f1 { background: linear-gradient(180deg, #9ca3af, #6b7280); }
+    .func-btn.f2 { background: linear-gradient(180deg, #fbbf24, #d97706); }
+    .func-btn.f3 { background: linear-gradient(180deg, #f87171, #dc2626); }
+
+    /* ===== MAIN PLAY AREA ===== */
+    .play-area {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr;
+      gap: 12px;
+      align-items: center;
+      z-index: 2;
+    }
+
+    /* Joystick */
+    .joystick-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .joystick-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #6b7280;
+    }
+    .joystick {
+      position: relative;
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #3a3f4e 0%, #1e2230 60%, #12141c 100%);
+      box-shadow:
+        0 4px 12px rgba(0,0,0,0.6),
+        inset 0 2px 4px rgba(255,255,255,0.06),
+        inset 0 -3px 8px rgba(0,0,0,0.5);
+      border: 2px solid #2a2e3a;
+      touch-action: none;
+      cursor: grab;
+    }
+    .joystick:active { cursor: grabbing; }
+    .joystick-knob {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #5a6175 0%, #2c3140 50%, #1a1d27 100%);
+      box-shadow:
+        0 3px 8px rgba(0,0,0,0.7),
+        inset 0 1px 2px rgba(255,255,255,0.15);
+      border: 1px solid #3a4050;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      transition: transform 0.05s linear;
+      pointer-events: none;
+    }
+    .joystick-knob::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #4a5165, #252a38);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+    }
+    .joy-dirs {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      font-size: 8px;
+      color: #4b5563;
+      font-weight: 600;
+    }
+    .joy-dirs span { position: absolute; }
+    .joy-dirs .u { top: 6px; left: 50%; transform: translateX(-50%); }
+    .joy-dirs .d { bottom: 6px; left: 50%; transform: translateX(-50%); }
+    .joy-dirs .l { left: 8px; top: 50%; transform: translateY(-50%); }
+    .joy-dirs .r { right: 8px; top: 50%; transform: translateY(-50%); }
+
+    /* Chord buttons */
+    .chord-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: auto auto;
+      gap: 6px;
+    }
+    .chord-btn {
+      height: 42px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(180deg, #e8eaf0 0%, #c8ccd8 100%);
+      color: #1a1d27;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow:
+        0 3px 6px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.6),
+        inset 0 -1px 2px rgba(0,0,0,0.1);
+      transition: transform 0.06s, box-shadow 0.06s, background 0.1s;
+      position: relative;
+      overflow: hidden;
+    }
+    .chord-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.05));
+      pointer-events: none;
+    }
+    .chord-btn:active, .chord-btn.active {
+      transform: translateY(2px);
+      box-shadow:
+        0 1px 2px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(0,0,0,0.2);
+      background: linear-gradient(180deg, #d0d4e0 0%, #b0b4c4 100%);
+    }
+    /* Sustained (ringing after release) — soft teal glow so you know which can be toggled off */
+    .chord-btn.sustained {
+      background: linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 100%);
+      box-shadow:
+        0 0 10px rgba(52, 211, 153, 0.45),
+        0 1px 2px rgba(0,0,0,0.3),
+        inset 0 1px 0 rgba(255,255,255,0.4);
+      color: #064e3b;
+    }
+    .chord-btn .num {
+      display: block;
+      font-size: 15px;
+      line-height: 1.1;
+    }
+    .chord-btn .roman {
+      display: block;
+      font-size: 9px;
+      opacity: 0.55;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    /* Layout: 1 3 5 7 on top row-ish, 2 4 6 below — approximate real device */
+    .chord-btn:nth-child(1) { grid-column: 1; grid-row: 2; }
+    .chord-btn:nth-child(2) { grid-column: 1; grid-row: 1; }
+    .chord-btn:nth-child(3) { grid-column: 2; grid-row: 2; }
+    .chord-btn:nth-child(4) { grid-column: 2; grid-row: 1; }
+    .chord-btn:nth-child(5) { grid-column: 3; grid-row: 2; }
+    .chord-btn:nth-child(6) { grid-column: 3; grid-row: 1; }
+    .chord-btn:nth-child(7) { grid-column: 4; grid-row: 1 / 3; align-self: stretch; height: auto; }
+
+    /* ===== BOTTOM CONTROLS ===== */
+    .bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      z-index: 2;
+    }
+    .power-btn {
+      width: 36px;
+      height: 22px;
+      border-radius: 11px;
+      border: none;
+      background: linear-gradient(180deg, #4b5563, #374151);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+    }
+    .power-btn.on {
+      background: linear-gradient(180deg, #34d399, #059669);
+    }
+    .power-btn::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .power-btn.on::after { transform: translateX(14px); }
+
+    .vol-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+    }
+    .vol-wrap label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #6b7280;
+    }
+    .vol-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      background: #1e2230;
+      outline: none;
+    }
+    .vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(180deg, #e5e7eb, #9ca3af);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+    .vol-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #d1d5db;
+      border: none;
+      cursor: pointer;
+    }
+
+    .sustain-btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #3a4050;
+      background: #1e2230;
+      color: #9ca3af;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sustain-btn.on {
+      background: #064e3b;
+      border-color: #34d399;
+      color: #6ee7b7;
+      box-shadow: 0 0 8px rgba(52,211,153,0.3);
+    }
+
+    /* ===== OSCILLOSCOPE ===== */
+    .scope-wrap {
+      width: min(420px, 96vw);
+      height: 70px;
+      background: #0a0c10;
+      border-radius: 8px;
+      border: 1px solid #1e2230;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.6);
+      overflow: hidden;
+      position: relative;
+    }
+    .scope-wrap canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .scope-label {
+      position: absolute;
+      top: 4px;
+      left: 8px;
+      font-size: 9px;
+      color: #34d399;
+      opacity: 0.5;
+      letter-spacing: 0.08em;
+    }
+
+    /* ===== TRANSPORT / REC BAR ===== */
+    .transport {
+      width: min(420px, 96vw);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #12151c;
+      border-radius: 10px;
+      border: 1px solid #1e2230;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .tr-btn {
+      padding: 7px 12px;
+      border-radius: 6px;
+      border: 1px solid #2a2e3a;
+      background: #1e2230;
+      color: #a0a8c0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: all 0.15s;
+      min-width: 56px;
+    }
+    .tr-btn:hover:not(:disabled) {
+      background: #2a2e3a;
+      color: #e8eaf0;
+    }
+    .tr-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .tr-btn.rec.on {
+      background: #7f1d1d;
+      border-color: #ef4444;
+      color: #fecaca;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+      animation: recPulse 1.2s ease-in-out infinite;
+    }
+    @keyframes recPulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.35); }
+      50% { box-shadow: 0 0 14px rgba(239, 68, 68, 0.7); }
+    }
+    .tr-btn.loop.on {
+      background: #064e3b;
+      border-color: #34d399;
+      color: #6ee7b7;
+      box-shadow: 0 0 8px rgba(52, 211, 153, 0.35);
+    }
+    .tr-btn.play.on {
+      background: #1e3a5f;
+      border-color: #60a5fa;
+      color: #bfdbfe;
+    }
+    .tr-status {
+      font-size: 10px;
+      color: #6b7280;
+      letter-spacing: 0.06em;
+      min-width: 90px;
+      text-align: center;
+    }
+    .tr-status.recording { color: #f87171; }
+    .tr-status.has-take { color: #6ee7b7; }
+    .tr-status.playing { color: #60a5fa; }
+
+    /* ===== KEYBOARD HINTS ===== */
+    .hints {
+      width: min(420px, 96vw);
+      font-size: 11px;
+      color: #6b7280;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .hints kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #1e2230;
+      border: 1px solid #2a2e3a;
+      font-family: inherit;
+      font-size: 10px;
+      color: #a0a8c0;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 400px) {
+      .device { padding: 10px 12px 14px; }
+      .joystick { width: 90px; height: 90px; }
+      .joystick-knob { width: 36px; height: 36px; }
+      .chord-btn { height: 36px; font-size: 12px; }
+      .oled { height: 36px; font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Pocket Audio <span>HiChord</span> — Interactive Recreation</h1>
+
+    <div class="device" id="device">
+      <div class="power-led" id="powerLed"></div>
+
+      <div class="top-bar">
+        <div class="oled" id="oled">
+          <span class="chord-name" id="oledChord">—</span>
+          <span class="meta" id="oledMeta">OFF</span>
+        </div>
+        <div class="func-btns">
+          <button class="func-btn f1" id="f1" title="Key / Octave">KEY</button>
+          <button class="func-btn f2" id="f2" title="Sound / Wave">SND</button>
+          <button class="func-btn f3" id="f3" title="Mode">MOD</button>
+        </div>
+      </div>
+
+      <div class="play-area">
+        <div class="joystick-wrap">
+          <div class="joystick-label">Modify</div>
+          <div class="joystick" id="joystick">
+            <div class="joy-dirs">
+              <span class="u">↑</span>
+              <span class="d">↓</span>
+              <span class="l">←</span>
+              <span class="r">→</span>
+            </div>
+            <div class="joystick-knob" id="knob"></div>
+          </div>
+        </div>
+
+        <div class="chord-grid" id="chordGrid">
+          <!-- Order: btn1, btn2, btn3, btn4, btn5, btn6, btn7 for CSS grid -->
+          <button class="chord-btn" data-deg="1"><span class="num">1</span><span class="roman">I</span></button>
+          <button class="chord-btn" data-deg="2"><span class="num">2</span><span class="roman">ii</span></button>
+          <button class="chord-btn" data-deg="3"><span class="num">3</span><span class="roman">iii</span></button>
+          <button class="chord-btn" data-deg="4"><span class="num">4</span><span class="roman">IV</span></button>
+          <button class="chord-btn" data-deg="5"><span class="num">5</span><span class="roman">V</span></button>
+          <button class="chord-btn" data-deg="6"><span class="num">6</span><span class="roman">vi</span></button>
+          <button class="chord-btn" data-deg="7"><span class="num">7</span><span class="roman">vii°</span></button>
+        </div>
+      </div>
+
+      <div class="bottom-bar">
+        <button class="power-btn" id="powerBtn" title="Power"></button>
+        <div class="vol-wrap">
+          <label>Vol</label>
+          <input type="range" class="vol-slider" id="volSlider" min="0" max="1" step="0.01" value="0.6" />
+        </div>
+        <button class="sustain-btn" id="sustainBtn">SUSTAIN</button>
+      </div>
+    </div>
+
+    <div class="scope-wrap">
+      <span class="scope-label">SCOPE</span>
+      <canvas id="scope"></canvas>
+    </div>
+
+    <div class="transport" id="transport">
+      <button class="tr-btn rec" id="recBtn" title="Record (R)">● REC</button>
+      <button class="tr-btn loop" id="loopBtn" title="Toggle loop playback" disabled>LOOP</button>
+      <button class="tr-btn play" id="playBtn" title="Play / Stop take (L)" disabled>▶ PLAY</button>
+      <button class="tr-btn" id="clearBtn" title="Clear recording" disabled>CLEAR</button>
+      <button class="tr-btn" id="dlBtn" title="Download WAV/WebM" disabled>⬇ SAVE</button>
+      <span class="tr-status" id="trStatus">No take</span>
+    </div>
+
+    <div class="hints">
+      <kbd>1</kbd>–<kbd>7</kbd> chords · <kbd>←↑↓→</kbd> joystick · <kbd>Space</kbd> sustain · <kbd>P</kbd> power · <kbd>[</kbd><kbd>]</kbd> key · <kbd>-</kbd><kbd>=</kbd> octave<br />
+      With <strong>Sustain</strong> on: press a glowing chord again to stop <em>only that</em> chord<br />
+      <kbd>R</kbd> record · <kbd>L</kbd> play/stop loop · save downloads the last take
+    </div>
+  </div>
+
+  <script>
+    /* ========================================================================
+       Pocket Audio HiChord — Web Audio Recreation
+       Single-file interactive synthesizer
+       ======================================================================== */
+
+    // -------------------- STATE --------------------
+    const state = {
+      powered: false,
+      sustain: false,
+      volume: 0.6,
+      keyIndex: 0,          // 0 = C, 1 = C#, ...
+      octave: 4,
+      waveType: 'sawtooth', // sawtooth | square | triangle | sine
+      joyX: 0,              // -1 .. 1
+      joyY: 0,
+      heldDegrees: new Set(),     // currently physically held
+      sustainedDegrees: new Set(), // kept alive by sustain (after release)
+      activeDegrees: new Set(),   // union: currently sounding
+      voices: new Map(),    // deg -> { oscillators, gains, filter, notes }
+      filterCutoff: 2200,
+      filterQ: 2,
+      vibratoDepth: 0,
+      vibratoRate: 5,
+    };
+
+    const KEY_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const WAVE_CYCLE = ['sawtooth', 'square', 'triangle', 'sine'];
+
+    // Nashville / diatonic degrees relative to key (major scale)
+    // degree 1..7 → scale degree offset
+    const DEGREE_OFFSETS = [0, 2, 4, 5, 7, 9, 11];
+    // default quality: maj, min, min, maj, maj, min, dim
+    const DEFAULT_QUAL = ['maj','min','min','maj','maj','min','dim'];
+
+    // -------------------- AUDIO CONTEXT --------------------
+    let audioCtx = null;
+    let masterGain = null;
+    let analyser = null;
+    let lfo = null;           // shared vibrato LFO
+    let lfoGain = null;
+    let destNode = null;      // MediaStreamDestination for recording
+
+    // Recording / loop state
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordedBlob = null;
+    let recordedUrl = null;
+    let loopAudio = null;     // HTMLAudioElement for simple loop playback
+    let isRecording = false;
+    let isPlayingTake = false;
+    let loopEnabled = true;
+
+    function ensureAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = state.volume;
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.7;
+      destNode = audioCtx.createMediaStreamDestination();
+
+      // Live path + tap for recording
+      masterGain.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      masterGain.connect(destNode);
+
+      // Shared LFO for vibrato
+      lfo = audioCtx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = state.vibratoRate;
+      lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 0; // depth in Hz, controlled by Y
+      lfo.connect(lfoGain);
+      lfo.start();
+    }
+
+    // -------------------- RECORD / LOOP / DOWNLOAD --------------------
+    function pickMimeType() {
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      for (const t of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+      }
+      return '';
+    }
+
+    function updateTransportUI() {
+      const recBtn = document.getElementById('recBtn');
+      const loopBtn = document.getElementById('loopBtn');
+      const playBtn = document.getElementById('playBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const dlBtn = document.getElementById('dlBtn');
+      const status = document.getElementById('trStatus');
+
+      recBtn.classList.toggle('on', isRecording);
+      recBtn.textContent = isRecording ? '■ STOP' : '● REC';
+
+      const hasTake = !!recordedBlob;
+      loopBtn.disabled = !hasTake;
+      playBtn.disabled = !hasTake;
+      clearBtn.disabled = !hasTake && !isRecording;
+      dlBtn.disabled = !hasTake;
+
+      loopBtn.classList.toggle('on', loopEnabled && hasTake);
+      playBtn.classList.toggle('on', isPlayingTake);
+      playBtn.textContent = isPlayingTake ? '■ STOP' : '▶ PLAY';
+
+      status.classList.remove('recording', 'has-take', 'playing');
+      if (isRecording) {
+        status.textContent = 'Recording…';
+        status.classList.add('recording');
+      } else if (isPlayingTake) {
+        status.textContent = loopEnabled ? 'Looping' : 'Playing';
+        status.classList.add('playing');
+      } else if (hasTake) {
+        const sec = recordedBlob.size ? ` · ${(recordedBlob.size / 1024).toFixed(0)} KB` : '';
+        status.textContent = 'Take ready' + sec;
+        status.classList.add('has-take');
+      } else {
+        status.textContent = 'No take';
+      }
+    }
+
+    function startRecording() {
+      if (!state.powered) {
+        setPower(true);
+      }
+      ensureAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      // Stop any playback of previous take
+      stopTakePlayback();
+
+      recordedChunks = [];
+      recordedBlob = null;
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl);
+        recordedUrl = null;
+      }
+
+      const mime = pickMimeType();
+      try {
+        mediaRecorder = mime
+          ? new MediaRecorder(destNode.stream, { mimeType: mime, audioBitsPerSecond: 128000 })
+          : new MediaRecorder(destNode.stream);
+      } catch (err) {
+        console.error('MediaRecorder failed', err);
+        alert('Recording not supported in this browser.');
+        return;
+      }
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        const type = mediaRecorder.mimeType || 'audio/webm';
+        recordedBlob = new Blob(recordedChunks, { type });
+        recordedUrl = URL.createObjectURL(recordedBlob);
+        isRecording = false;
+        updateTransportUI();
+      };
+
+      mediaRecorder.start(100); // gather chunks every 100ms
+      isRecording = true;
+      updateTransportUI();
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      isRecording = false;
+      updateTransportUI();
+    }
+
+    function toggleRecording() {
+      if (isRecording) stopRecording();
+      else startRecording();
+    }
+
+    function stopTakePlayback() {
+      if (loopAudio) {
+        loopAudio.pause();
+        loopAudio.currentTime = 0;
+        loopAudio.onended = null;
+      }
+      isPlayingTake = false;
+      updateTransportUI();
+    }
+
+    function playTake() {
+      if (!recordedUrl) return;
+      stopTakePlayback();
+
+      if (!loopAudio) {
+        loopAudio = new Audio();
+      }
+      loopAudio.src = recordedUrl;
+      loopAudio.loop = loopEnabled;
+      loopAudio.volume = 1;
+
+      loopAudio.onended = () => {
+        // only fires when loop is off
+        isPlayingTake = false;
+        updateTransportUI();
+      };
+
+      loopAudio.play().then(() => {
+        isPlayingTake = true;
+        updateTransportUI();
+      }).catch((err) => {
+        console.error('Playback failed', err);
+        isPlayingTake = false;
+        updateTransportUI();
+      });
+    }
+
+    function togglePlayTake() {
+      if (isPlayingTake) stopTakePlayback();
+      else playTake();
+    }
+
+    function toggleLoop() {
+      loopEnabled = !loopEnabled;
+      if (loopAudio) loopAudio.loop = loopEnabled;
+      updateTransportUI();
+    }
+
+    function clearTake() {
+      stopTakePlayback();
+      if (isRecording) stopRecording();
+      recordedChunks = [];
+      recordedBlob = null;
+      if (recordedUrl) {
+        URL.revokeObjectURL(recordedUrl);
+        recordedUrl = null;
+      }
+      mediaRecorder = null;
+      updateTransportUI();
+    }
+
+    function downloadTake() {
+      if (!recordedBlob || !recordedUrl) return;
+      const ext = recordedBlob.type.includes('ogg') ? 'ogg'
+        : recordedBlob.type.includes('mp4') ? 'm4a'
+        : 'webm';
+      const a = document.createElement('a');
+      a.href = recordedUrl;
+      a.download = `hichord-take-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // -------------------- MUSIC HELPERS --------------------
+    function midiToFreq(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function noteName(midi) {
+      return KEY_NAMES[((midi % 12) + 12) % 12] + Math.floor(midi / 12) - 1;
+    }
+
+    /** Build chord notes (MIDI) from root MIDI + quality string */
+    function buildChord(rootMidi, quality) {
+      const intervals = {
+        maj:  [0, 4, 7],
+        min:  [0, 3, 7],
+        dim:  [0, 3, 6],
+        aug:  [0, 4, 8],
+        sus4: [0, 5, 7],
+        sus2: [0, 2, 7],
+        maj7: [0, 4, 7, 11],
+        min7: [0, 3, 7, 10],
+        dom7: [0, 4, 7, 10],
+        maj9: [0, 4, 7, 11, 14],
+        min9: [0, 3, 7, 10, 14],
+        '6':  [0, 4, 7, 9],
+        min6: [0, 3, 7, 9],
+      };
+      const ints = intervals[quality] || intervals.maj;
+      return ints.map(i => rootMidi + i);
+    }
+
+    /** Determine quality from default + joystick position */
+    function qualityFromJoystick(baseQual, x, y) {
+      // Deadzone
+      const mag = Math.hypot(x, y);
+      if (mag < 0.25) return baseQual;
+
+      // 8 directions
+      const angle = Math.atan2(y, x); // -PI .. PI, 0 = right
+      // Map to sectors
+      // UP (y>0 in screen coords? wait: our joyY positive = up)
+      // joyX: -1 left, +1 right; joyY: -1 down, +1 up
+
+      const absX = Math.abs(x);
+      const absY = Math.abs(y);
+
+      // Prefer cardinal if one axis dominates
+      if (absY > absX * 1.2) {
+        if (y > 0) {
+          // UP → flip maj/min
+          if (baseQual === 'maj') return 'min';
+          if (baseQual === 'min') return 'maj';
+          if (baseQual === 'dim') return 'min';
+          return baseQual === 'maj' ? 'min' : 'maj';
+        } else {
+          // DOWN → sus4
+          return 'sus4';
+        }
+      }
+      if (absX > absY * 1.2) {
+        if (x > 0) {
+          // RIGHT → maj7 / min7
+          return (baseQual === 'min' || baseQual === 'dim') ? 'min7' : 'maj7';
+        } else {
+          // LEFT → dim
+          return 'dim';
+        }
+      }
+
+      // Diagonals
+      if (x > 0 && y > 0) return 'dom7';          // up-right
+      if (x < 0 && y > 0) return 'aug';           // up-left
+      if (x > 0 && y < 0) return (baseQual === 'min') ? 'min9' : 'maj9'; // down-right
+      if (x < 0 && y < 0) return (baseQual === 'min') ? 'sus2' : '6';   // down-left
+
+      return baseQual;
+    }
+
+    function getRootMidi(degree) {
+      // degree 1-7
+      const offset = DEGREE_OFFSETS[degree - 1];
+      return (state.octave + 1) * 12 + state.keyIndex + offset; // C4 = 60 when octave=4, key=C
+    }
+
+    // -------------------- VOICE MANAGEMENT --------------------
+    function createVoice(notes) {
+      const now = audioCtx.currentTime;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(state.filterCutoff, now);
+      filter.Q.setValueAtTime(state.filterQ, now);
+
+      const oscs = [];
+      const gains = [];
+
+      notes.forEach((midi, i) => {
+        const osc = audioCtx.createOscillator();
+        osc.type = state.waveType;
+        osc.frequency.setValueAtTime(midiToFreq(midi), now);
+
+        // slight detune for richness
+        if (i > 0) osc.detune.setValueAtTime((i % 2 === 0 ? 1 : -1) * (3 + i), now);
+
+        // connect LFO for vibrato
+        lfoGain.connect(osc.frequency);
+
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0, now);
+        // soft attack
+        g.gain.linearRampToValueAtTime(0.22 / notes.length, now + 0.04);
+        // slight decay to sustain level
+        g.gain.linearRampToValueAtTime(0.16 / notes.length, now + 0.18);
+
+        osc.connect(g);
+        g.connect(filter);
+        osc.start(now);
+        oscs.push(osc);
+        gains.push(g);
+      });
+
+      filter.connect(masterGain);
+      return { oscs, gains, filter, notes };
+    }
+
+    function releaseVoice(voice, quick = false) {
+      if (!voice || !audioCtx) return;
+      const now = audioCtx.currentTime;
+      const rel = quick ? 0.08 : 0.35;
+      voice.gains.forEach(g => {
+        g.gain.cancelScheduledValues(now);
+        g.gain.setValueAtTime(g.gain.value, now);
+        g.gain.linearRampToValueAtTime(0, now + rel);
+      });
+      voice.oscs.forEach(o => {
+        try { o.stop(now + rel + 0.05); } catch (_) {}
+      });
+      setTimeout(() => {
+        try { voice.filter.disconnect(); } catch (_) {}
+      }, (rel + 0.1) * 1000);
+    }
+
+    function startDegree(deg) {
+      if (!state.powered || !audioCtx) return;
+      if (state.voices.has(deg)) return; // already playing
+
+      const root = getRootMidi(deg);
+      const baseQ = DEFAULT_QUAL[deg - 1];
+      const qual = qualityFromJoystick(baseQ, state.joyX, state.joyY);
+      const notes = buildChord(root, qual);
+      const voice = createVoice(notes);
+      state.voices.set(deg, voice);
+      state.activeDegrees.add(deg);
+      updateOLED();
+    }
+
+    /** Force-stop a degree regardless of sustain (for individual kill / toggle-off) */
+    function forceStopDegree(deg) {
+      const voice = state.voices.get(deg);
+      if (voice) {
+        releaseVoice(voice);
+        state.voices.delete(deg);
+      }
+      state.activeDegrees.delete(deg);
+      state.heldDegrees.delete(deg);
+      state.sustainedDegrees.delete(deg);
+      updateOLED();
+    }
+
+    function stopDegree(deg) {
+      // Physical release: if sustain is on, move to sustained set instead of stopping
+      state.heldDegrees.delete(deg);
+      if (state.sustain) {
+        if (state.voices.has(deg)) {
+          state.sustainedDegrees.add(deg);
+          state.activeDegrees.add(deg);
+        }
+        updateOLED();
+        return;
+      }
+      forceStopDegree(deg);
+    }
+
+    function stopAll(quick = false) {
+      state.voices.forEach((v) => {
+        releaseVoice(v, quick);
+      });
+      state.voices.clear();
+      state.activeDegrees.clear();
+      state.heldDegrees.clear();
+      state.sustainedDegrees.clear();
+      updateOLED();
+    }
+
+    /** Re-trigger currently held chords with new quality / filter (smooth) */
+    function updateActiveVoices() {
+      if (!state.powered) return;
+      // For quality change we rebuild; for filter we just smooth the filter param
+      state.activeDegrees.forEach(deg => {
+        const voice = state.voices.get(deg);
+        if (!voice) return;
+
+        // Smooth filter
+        const now = audioCtx.currentTime;
+        voice.filter.frequency.linearRampToValueAtTime(state.filterCutoff, now + 0.05);
+        voice.filter.Q.linearRampToValueAtTime(state.filterQ, now + 0.05);
+
+        // If quality changed, rebuild notes (simple approach: release + new)
+        const root = getRootMidi(deg);
+        const baseQ = DEFAULT_QUAL[deg - 1];
+        const qual = qualityFromJoystick(baseQ, state.joyX, state.joyY);
+        const newNotes = buildChord(root, qual);
+        const same = voice.notes.length === newNotes.length &&
+                     voice.notes.every((n, i) => n === newNotes[i]);
+        if (!same) {
+          releaseVoice(voice, true);
+          const nv = createVoice(newNotes);
+          state.voices.set(deg, nv);
+        }
+      });
+      updateOLED();
+    }
+
+    // -------------------- JOYSTICK → SOUND PARAMS --------------------
+    function applyJoystickToSound() {
+      // X = filter cutoff / brightness   (low left → high right)
+      // Map -1..1 → 300 .. 6000 Hz (log-ish)
+      const t = (state.joyX + 1) / 2; // 0..1
+      state.filterCutoff = 300 * Math.pow(20, t); // ~300 to 6000
+
+      // Y = modulation depth + slight Q
+      // up = more vibrato + resonance
+      const ty = (state.joyY + 1) / 2;
+      state.vibratoDepth = ty * 18; // Hz
+      state.filterQ = 1 + ty * 8;
+
+      if (lfoGain && audioCtx) {
+        const now = audioCtx.currentTime;
+        lfoGain.gain.linearRampToValueAtTime(state.vibratoDepth, now + 0.04);
+        if (lfo) lfo.frequency.linearRampToValueAtTime(4 + ty * 6, now + 0.04);
+      }
+
+      updateActiveVoices();
+    }
+
+    // -------------------- UI UPDATES --------------------
+    function updateOLED() {
+      const oledChord = document.getElementById('oledChord');
+      const oledMeta = document.getElementById('oledMeta');
+      if (!state.powered) {
+        oledChord.textContent = '—';
+        oledMeta.textContent = 'OFF';
+        return;
+      }
+      if (state.activeDegrees.size === 0) {
+        oledChord.textContent = KEY_NAMES[state.keyIndex] + ' maj';
+        oledMeta.textContent = `Oct ${state.octave} · ${state.waveType.slice(0,3)}`;
+        return;
+      }
+      // show first active
+      const deg = [...state.activeDegrees][0];
+      const root = getRootMidi(deg);
+      const baseQ = DEFAULT_QUAL[deg - 1];
+      const qual = qualityFromJoystick(baseQ, state.joyX, state.joyY);
+      const rootName = KEY_NAMES[(root % 12 + 12) % 12];
+      const qLabel = {
+        maj: '', min: 'm', dim: 'dim', aug: 'aug', sus4: 'sus4', sus2: 'sus2',
+        maj7: 'maj7', min7: 'm7', dom7: '7', maj9: 'maj9', min9: 'm9', '6': '6', min6: 'm6'
+      }[qual] || '';
+      oledChord.textContent = rootName + qLabel;
+      oledMeta.textContent = `°${deg} · ${KEY_NAMES[state.keyIndex]}`;
+    }
+
+    function setPower(on) {
+      state.powered = on;
+      document.getElementById('powerBtn').classList.toggle('on', on);
+      document.getElementById('powerLed').classList.toggle('on', on);
+      if (on) {
+        ensureAudio();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        masterGain.gain.setValueAtTime(state.volume, audioCtx.currentTime);
+      } else {
+        if (isRecording) stopRecording();
+        stopAll(true);
+        if (masterGain && audioCtx) {
+          masterGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        }
+      }
+      updateOLED();
+    }
+
+    // -------------------- JOYSTICK INTERACTION --------------------
+    const joystick = document.getElementById('joystick');
+    const knob = document.getElementById('knob');
+    let joyDragging = false;
+
+    function setJoyVisual(x, y) {
+      // x,y in -1..1
+      const maxR = 28; // px travel
+      knob.style.transform = `translate(calc(-50% + ${x * maxR}px), calc(-50% + ${-y * maxR}px))`;
+    }
+
+    function joyFromEvent(e) {
+      const rect = joystick.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let clientX, clientY;
+      if (e.touches && e.touches.length) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
+      let dx = (clientX - cx) / (rect.width / 2);
+      let dy = (cy - clientY) / (rect.height / 2); // invert Y so up = positive
+      const mag = Math.hypot(dx, dy);
+      if (mag > 1) { dx /= mag; dy /= mag; }
+      return { x: dx, y: dy };
+    }
+
+    function onJoyStart(e) {
+      e.preventDefault();
+      joyDragging = true;
+      const { x, y } = joyFromEvent(e);
+      state.joyX = x; state.joyY = y;
+      setJoyVisual(x, y);
+      applyJoystickToSound();
+    }
+    function onJoyMove(e) {
+      if (!joyDragging) return;
+      e.preventDefault();
+      const { x, y } = joyFromEvent(e);
+      state.joyX = x; state.joyY = y;
+      setJoyVisual(x, y);
+      applyJoystickToSound();
+    }
+    function onJoyEnd(e) {
+      if (!joyDragging) return;
+      joyDragging = false;
+      // spring back
+      state.joyX = 0; state.joyY = 0;
+      setJoyVisual(0, 0);
+      applyJoystickToSound();
+    }
+
+    joystick.addEventListener('mousedown', onJoyStart);
+    window.addEventListener('mousemove', onJoyMove);
+    window.addEventListener('mouseup', onJoyEnd);
+    joystick.addEventListener('touchstart', onJoyStart, { passive: false });
+    window.addEventListener('touchmove', onJoyMove, { passive: false });
+    window.addEventListener('touchend', onJoyEnd);
+    window.addEventListener('touchcancel', onJoyEnd);
+
+    // -------------------- CHORD BUTTONS --------------------
+    // With sustain ON: press a sounding (sustained) chord again to stop ONLY that chord.
+    // With sustain OFF: normal hold-to-play behavior.
+    const chordBtns = document.querySelectorAll('.chord-btn');
+    chordBtns.forEach(btn => {
+      const deg = parseInt(btn.dataset.deg, 10);
+      const down = (e) => {
+        e.preventDefault();
+        if (!state.powered) return;
+
+        // Individual kill: if this degree is already sounding via sustain and not held,
+        // a new press toggles it off instead of re-triggering.
+        if (state.sustain && state.sustainedDegrees.has(deg) && !state.heldDegrees.has(deg)) {
+          forceStopDegree(deg);
+          btn.classList.remove('active');
+          return;
+        }
+
+        btn.classList.add('active');
+        state.heldDegrees.add(deg);
+        state.sustainedDegrees.delete(deg); // re-held, so no longer "sustained-only"
+        startDegree(deg);
+      };
+      const up = (e) => {
+        e.preventDefault();
+        // Only remove visual "pressed" if it's not still sustained
+        if (!state.sustainedDegrees.has(deg)) {
+          btn.classList.remove('active');
+        }
+        stopDegree(deg);
+        // Keep a subtle sustained visual if still ringing under sustain
+        if (state.sustainedDegrees.has(deg)) {
+          btn.classList.add('sustained');
+        } else {
+          btn.classList.remove('sustained');
+        }
+      };
+      btn.addEventListener('mousedown', down);
+      btn.addEventListener('mouseup', up);
+      btn.addEventListener('mouseleave', up);
+      btn.addEventListener('touchstart', down, { passive: false });
+      btn.addEventListener('touchend', up, { passive: false });
+      btn.addEventListener('touchcancel', up);
+    });
+
+    // -------------------- CONTROLS --------------------
+    document.getElementById('powerBtn').addEventListener('click', () => {
+      setPower(!state.powered);
+    });
+
+    document.getElementById('volSlider').addEventListener('input', (e) => {
+      state.volume = parseFloat(e.target.value);
+      if (masterGain && audioCtx) {
+        masterGain.gain.linearRampToValueAtTime(state.volume, audioCtx.currentTime + 0.02);
+      }
+    });
+
+    document.getElementById('sustainBtn').addEventListener('click', () => {
+      state.sustain = !state.sustain;
+      document.getElementById('sustainBtn').classList.toggle('on', state.sustain);
+      if (!state.sustain) {
+        // Turning sustain OFF: release anything that is no longer physically held
+        [...state.sustainedDegrees].forEach(deg => {
+          if (!state.heldDegrees.has(deg)) {
+            forceStopDegree(deg);
+            const btn = document.querySelector(`.chord-btn[data-deg="${deg}"]`);
+            if (btn) {
+              btn.classList.remove('active', 'sustained');
+            }
+          }
+        });
+        state.sustainedDegrees.clear();
+      }
+    });
+
+    // Function buttons
+    document.getElementById('f1').addEventListener('click', () => {
+      if (!state.powered) return;
+      // cycle key
+      state.keyIndex = (state.keyIndex + 1) % 12;
+      updateActiveVoices();
+      updateOLED();
+    });
+    document.getElementById('f2').addEventListener('click', () => {
+      if (!state.powered) return;
+      const i = WAVE_CYCLE.indexOf(state.waveType);
+      state.waveType = WAVE_CYCLE[(i + 1) % WAVE_CYCLE.length];
+      // rebuild voices with new wave
+      const held = [...state.activeDegrees];
+      stopAll(true);
+      held.forEach(d => startDegree(d));
+      updateOLED();
+    });
+    document.getElementById('f3').addEventListener('click', () => {
+      if (!state.powered) return;
+      // cycle octave for demo
+      state.octave = state.octave >= 5 ? 3 : state.octave + 1;
+      updateActiveVoices();
+      updateOLED();
+    });
+
+    // -------------------- KEYBOARD --------------------
+    const keyMap = {
+      '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
+    };
+    const pressedKeys = new Set();
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const k = e.key.toLowerCase();
+
+      if (k === 'p') { setPower(!state.powered); return; }
+      if (k === ' ') {
+        e.preventDefault();
+        state.sustain = !state.sustain;
+        document.getElementById('sustainBtn').classList.toggle('on', state.sustain);
+        if (!state.sustain) {
+          [...state.sustainedDegrees].forEach(deg => {
+            if (!state.heldDegrees.has(deg)) {
+              forceStopDegree(deg);
+              const btn = document.querySelector(`.chord-btn[data-deg="${deg}"]`);
+              if (btn) btn.classList.remove('active', 'sustained');
+            }
+          });
+          state.sustainedDegrees.clear();
+        }
+        return;
+      }
+      if (k === '[') {
+        state.keyIndex = (state.keyIndex + 11) % 12;
+        updateActiveVoices(); updateOLED(); return;
+      }
+      if (k === ']') {
+        state.keyIndex = (state.keyIndex + 1) % 12;
+        updateActiveVoices(); updateOLED(); return;
+      }
+      if (k === '-' || k === '_') {
+        state.octave = Math.max(2, state.octave - 1);
+        updateActiveVoices(); updateOLED(); return;
+      }
+      if (k === '=' || k === '+') {
+        state.octave = Math.min(6, state.octave + 1);
+        updateActiveVoices(); updateOLED(); return;
+      }
+
+      // Arrow keys → joystick
+      if (['arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
+        e.preventDefault();
+        if (k === 'arrowup')    state.joyY = Math.min(1, state.joyY + 0.35);
+        if (k === 'arrowdown')  state.joyY = Math.max(-1, state.joyY - 0.35);
+        if (k === 'arrowleft')  state.joyX = Math.max(-1, state.joyX - 0.35);
+        if (k === 'arrowright') state.joyX = Math.min(1, state.joyX + 0.35);
+        // clamp magnitude
+        const m = Math.hypot(state.joyX, state.joyY);
+        if (m > 1) { state.joyX /= m; state.joyY /= m; }
+        setJoyVisual(state.joyX, state.joyY);
+        applyJoystickToSound();
+        return;
+      }
+
+      if (keyMap[k] && state.powered) {
+        if (pressedKeys.has(k)) return;
+        pressedKeys.add(k);
+        const deg = keyMap[k];
+        const btn = document.querySelector(`.chord-btn[data-deg="${deg}"]`);
+
+        // Individual kill while sustain is on: press again to stop only this chord
+        if (state.sustain && state.sustainedDegrees.has(deg) && !state.heldDegrees.has(deg)) {
+          forceStopDegree(deg);
+          if (btn) btn.classList.remove('active', 'sustained');
+          pressedKeys.delete(k);
+          return;
+        }
+
+        if (btn) {
+          btn.classList.add('active');
+          btn.classList.remove('sustained');
+        }
+        state.heldDegrees.add(deg);
+        state.sustainedDegrees.delete(deg);
+        startDegree(deg);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (['arrowup','arrowdown','arrowleft','arrowright'].includes(k)) {
+        // soft return toward center
+        state.joyX *= 0.3;
+        state.joyY *= 0.3;
+        if (Math.abs(state.joyX) < 0.1) state.joyX = 0;
+        if (Math.abs(state.joyY) < 0.1) state.joyY = 0;
+        setJoyVisual(state.joyX, state.joyY);
+        applyJoystickToSound();
+        return;
+      }
+      if (keyMap[k]) {
+        pressedKeys.delete(k);
+        const deg = keyMap[k];
+        const btn = document.querySelector(`.chord-btn[data-deg="${deg}"]`);
+        stopDegree(deg);
+        if (btn) {
+          if (state.sustainedDegrees.has(deg)) {
+            btn.classList.add('sustained');
+            // keep a dim "active" look while sustained
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active', 'sustained');
+          }
+        }
+      }
+    });
+
+    // -------------------- OSCILLOSCOPE --------------------
+    const canvas = document.getElementById('scope');
+    const ctx2d = canvas.getContext('2d');
+    function resizeScope() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * devicePixelRatio;
+      canvas.height = rect.height * devicePixelRatio;
+      ctx2d.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
+    window.addEventListener('resize', resizeScope);
+    resizeScope();
+
+    const scopeData = new Uint8Array(128);
+    function drawScope() {
+      requestAnimationFrame(drawScope);
+      const w = canvas.width / devicePixelRatio;
+      const h = canvas.height / devicePixelRatio;
+      ctx2d.fillStyle = '#0a0c10';
+      ctx2d.fillRect(0, 0, w, h);
+
+      if (!analyser || !state.powered) {
+        // idle line
+        ctx2d.strokeStyle = '#1a3a2a';
+        ctx2d.lineWidth = 1;
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, h / 2);
+        ctx2d.lineTo(w, h / 2);
+        ctx2d.stroke();
+        return;
+      }
+
+      analyser.getByteTimeDomainData(scopeData);
+      ctx2d.strokeStyle = '#34d399';
+      ctx2d.lineWidth = 1.5;
+      ctx2d.beginPath();
+      const slice = w / scopeData.length;
+      for (let i = 0; i < scopeData.length; i++) {
+        const v = scopeData[i] / 128.0;
+        const y = (v * h) / 2;
+        if (i === 0) ctx2d.moveTo(i * slice, y);
+        else ctx2d.lineTo(i * slice, y);
+      }
+      ctx2d.stroke();
+    }
+    drawScope();
+
+    // -------------------- TRANSPORT BUTTONS --------------------
+    document.getElementById('recBtn').addEventListener('click', () => toggleRecording());
+    document.getElementById('loopBtn').addEventListener('click', () => toggleLoop());
+    document.getElementById('playBtn').addEventListener('click', () => togglePlayTake());
+    document.getElementById('clearBtn').addEventListener('click', () => clearTake());
+    document.getElementById('dlBtn').addEventListener('click', () => downloadTake());
+
+    // Extra keyboard: R = record, L = play/stop take
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      // ignore if typing in an input (none currently, but safe)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      const k = e.key.toLowerCase();
+      if (k === 'r') {
+        e.preventDefault();
+        toggleRecording();
+      } else if (k === 'l') {
+        e.preventDefault();
+        togglePlayTake();
+      }
+    });
+
+    // -------------------- INIT --------------------
+    updateOLED();
+    updateTransportUI();
+  </script>
+</body>
+</html>
